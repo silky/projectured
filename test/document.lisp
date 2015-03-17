@@ -785,6 +785,17 @@
     (list (sql/table-reference ()
             (sql/table () "person")))))
 
+;;; Levy example
+
+(def function make-test-document/sqlx ()
+  (sqlx/select ()
+    (list (sqlx/column-reference ()
+            (sqlx/column () "name" "varchar"))
+          (sqlx/column-reference ()
+            (sqlx/column () "age" "integer")))
+    (list (sqlx/table-reference ()
+            (sqlx/table () "person")))))
+
 ;;;;;;
 ;;; T
 

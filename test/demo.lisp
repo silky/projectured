@@ -139,6 +139,8 @@
 
 (def demo sql (make-test-document/sql) (make-test-projection/sql->graphics))
 
+(def demo sqlx (make-test-document/sqlx) (make-test-projection/sqlx->graphics))
+
 (def demo t/null (make-test-document/t/null) (make-test-projection/t->graphics/table))
 
 (def demo t/cons (make-test-document/t/cons) (make-test-projection/t->graphics/table))

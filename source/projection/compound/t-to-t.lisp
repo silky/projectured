@@ -337,6 +337,18 @@
   '(make-projection/sql->tree))
 
 ;;;;;;
+;;; Levy example
+
+(def function make-projection/sqlx->tree ()
+  (type-dispatching
+    (sqlx/column-reference (make-projection/sqlx/column-reference->tree/leaf))
+    (sqlx/table-reference (make-projection/sqlx/table-reference->tree/leaf))
+    (sqlx/select (make-projection/sqlx/select->tree/node))))
+
+(def macro sqlx->tree ()
+  '(make-projection/sqlx->tree))
+
+;;;;;;
 ;;; Test
 
 (def function make-projection/test->tree ()

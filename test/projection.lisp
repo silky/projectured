@@ -383,13 +383,13 @@
     ("javascript block" (make-javascript/statement/block nil))
     ("javascript function definition" (make-javascript/definition/function "" nil nil))
     ("evaluator" (make-evaluator/evaluator (make-instance 'common-lisp/progn :body nil)))
-    ("sql select" (sql/select (:selection '((the sequence (columns-of (the sql/select document)))
-                                            (the document/insertion (elt (the sequence document) 0))
-                                            (the string (value-of (the document/insertion  document)))
-                                            (the string (subseq (the string document) 0 0))))
-                    (list (document/insertion :selection '((the string (value-of (the document/insertion  document)))
-                                                           (the string (subseq (the string document) 0 0)))))
-                    (list (document/insertion))))))
+    ("sqlx select" (sqlx/select (:selection '((the sequence (columns-of (the sqlx/select document)))
+                                              (the document/insertion (elt (the sequence document) 0))
+                                              (the string (value-of (the document/insertion  document)))
+                                              (the string (subseq (the string document) 0 0))))
+                                (list (document/insertion :selection '((the string (value-of (the document/insertion  document)))
+                                                                       (the string (subseq (the string document) 0 0)))))
+                                (list (document/insertion))))))
 
 (def function test-searcher (search instance)
   (search-parts instance (lambda (instance)
@@ -1034,6 +1034,29 @@
     (make-test-projection/text->output)))
 
 ;;;;;;
+;;; Levy example
+
+(def function make-test-projection/sqlx->tree ()
+  (recursive
+    (type-dispatching
+      (sqlx/base (sqlx->tree))
+      (document/base (document->t 'test-factory)))))
+
+(def function make-test-projection/sqlx->text ()
+  (sequential
+    (make-test-projection/sqlx->tree)
+    (make-test-projection/tree->text)))
+
+(def function make-test-projection/sqlx->graphics ()
+  (sequential
+    (make-test-projection/sqlx->tree)
+    (make-test-projection/tree->text)
+    ;;(line-numbering)
+    ;;(word-wrapping 100)
+    (make-test-projection/text->output)))
+
+
+;;;;;;
 ;;; Inspector
 
 (def function make-test-projection/inspector->text ()
@@ -1072,6 +1095,7 @@
         (common-lisp/base (sequential
                             (common-lisp->lisp-form)
                             (lisp-form->tree)))
+        (sqlx/base (sqlx->tree)) ;; Levy example
         (sql/base (sql->tree))
         (lisp-form/base (lisp-form->tree))
         (table/base (sequential
