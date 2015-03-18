@@ -6,64 +6,41 @@
 
 (in-package :projectured)
 
-#|
-SQL
-
-A teljes szabvány lefedése jelenleg túl nagy munka befektetést igényelne.
-A szabad szöveges szerkesztés jelenleg nem kiváltható, illetve a kiváltás teljes körűségének hasznossága nem bizonyított.
-A SQL dokumentum mixálhatósága más dokumentumokkal a legfontosabb hozadék.
-
-Ezért a fókuszban
-SQL domainből csak azokat tanitjuk meg a szerkesztőnek, ami jelenleg hasznosnak ismert.
-Elvárás, hogy a domain szinten nem támogatott nyelvi elemek is elérhetőek legyenek
-- vegyes sql/text és sql/base (illetve bármi más
-
-|#
-
 ;;;;;;
-;;; SQL domain 
+;;; SQL domain
+
+;;; special slot behavior
+
+;;; :body #t - define in macro as &body
+(pushnew :body hu.dwim.defclass-star:*allowed-slot-definition-properties*)
 
 (def document sql/base ()
   ())
 
-;; minden olyan egyébként az sql domain részét képező szöveges tartalom, amit jelenleg a szerkesztő nem ismer
-;; select sum(salary), employee_id from employee group by employee_id
-;; - legegyszerűbb formában
-;;   (statement (text))
-;; - sql statement struktúráját minimálisan már használva
-;;   (statement (select-clause (text)) (from-clause (text)) (group-by (text)))
-;; - amennyiben az sql domain már ismeri a használt fogalmakat
-;;   (statement (select-clause (function (column-reference)) (column-reference)) (from-clause (table-reference)) (group-by (column-reference)))
-;; bármilyen köztes állapotban vegyesen szerepelhet sql/domain specifikus dokumentum elem, illetve azzal együttműködő szabad text
-;; idővel amúgy is kell parser, ami a text->sql projekciót képes megoldani
-;; ugyanakkor a szabad szöveges bevitel helyett elsősorban egyedi gesture alapúnak kell lennie
-
 (def document sql/text ()
   ())
 
-;; Simple veriosn
-(def sql/statement column ()
+(def sql/document column ()
   ((name :type string)
-   (type :type string :accessor nil))
-  (:tree-projection :node))
+   (type :type string :accessor nil)))
 
-(def sql/statement column-reference ()
-  ((target :type sql/column))
-  (:tree-projection :leaf))
+(def sql/document column-reference ()
+  ((target :type sql/column :body #t)))
 
-(def sql/statement table ()
+(def sql/document table ()
   ((name :type string)
-   (columns :type sequence :sql-body #t))
-  (:tree-projection :node))
+   (columns :type sequence :body #t)))
 
-(def sql/statement table-reference ()
-  ((target :type sql/table))
-  (:tree-projection :leaf))
+(def sql/document table-reference ()
+  ((target :type sql/table :body #t)))
 
-(def sql/statement select ()
-  ((columns :type sequence :iomap sequence)
-   (tables :type sequence :iomap sequence))
-  (:tree-projection :node))
+(def sql/document select ()
+  ((columns :type sequence)
+   (tables :type sequence)))
+
+#+nil(def sql/document select ()
+  ((columns :type sequence :body #t)
+   (tables :type sequence :body #t)))
 
 
 ;;;;;;
