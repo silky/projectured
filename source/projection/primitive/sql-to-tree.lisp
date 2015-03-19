@@ -7,6 +7,41 @@
 (in-package :projectured)
 
 ;;;;;;
+;;; Template projection
+
+
+
+(def projection-template sql/column-reference tree/leaf
+  #+nil(:projection (tree/leaf (:selection output-selection)
+                 (text/make-default-text (name-of (target-of input)) "enter column name" :font-color *color/solarized/content/darker* :selection (as (nthcdr 1 (va output-selection))))))
+  #+nil(:printer :default))
+
+(def projection-template sql/table-reference tree/leaf
+  #+nil(:projection (tree/leaf (:selection output-selection)
+                 (text/make-default-text (name-of (target-of input)) "enter table name" :font-color *color/solarized/content/darker* :selection (as (nthcdr 1 (va output-selection))))))
+  #+nil(:printer :default))
+
+(def projection-template sql/select tree/node
+  (:iomap columns tables)
+  #+nil(:projection (tree/node (:selection output-selection :separator (text/text () (text/string " ")))
+                 (tree/leaf (:selection (as (nthcdr 2 (va output-selection))))
+                   (text/text (:selection (as (nthcdr 3 (va output-selection))))
+                     (text/string "SELECT" :font-color *color/solarized/blue*)))
+                 (make-tree/node (as (mapcar 'output-of (va columns-iomap)))
+                                 :separator (text/text () (text/string ", " :font-color *color/solarized/gray*))
+                                 :selection (as (nthcdr 2 (va output-selection))))
+                 (tree/leaf (:selection (as (nthcdr 2 (va output-selection))))
+                   (text/text (:selection (as (nthcdr 3 (va output-selection))))
+                     (text/string "FROM" :font-color *color/solarized/blue*)))
+                 (make-tree/node (as (mapcar 'output-of (va tables-iomap)))
+                                 :separator (text/text () (text/string ", " :font-color *color/solarized/gray*))
+                                 :selection (as (nthcdr 2 (va output-selection))))))
+  #+nil(:printer :default))
+
+
+
+
+;;;;;;
 ;;; Projection
 
 #+nil(def projection sql/column-reference->tree/leaf ()

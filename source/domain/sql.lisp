@@ -12,7 +12,7 @@
 ;;; special slot behavior
 
 ;;; :body #t - define in macro as &body
-(pushnew :body hu.dwim.defclass-star:*allowed-slot-definition-properties*)
+(pushnew :sql-body hu.dwim.defclass-star:*allowed-slot-definition-properties*)
 
 (def document sql/base ()
   ())
@@ -25,14 +25,14 @@
    (type :type string :accessor nil)))
 
 (def sql/document column-reference ()
-  ((target :type sql/column :body #t)))
+  ((target :type sql/column :sql-body t)))
 
 (def sql/document table ()
   ((name :type string)
-   (columns :type sequence :body #t)))
+   (columns :type sequence :sql-body #t)))
 
 (def sql/document table-reference ()
-  ((target :type sql/table :body #t)))
+  ((target :type sql/table :sql-body #t)))
 
 (def sql/document select ()
   ((columns :type sequence)
@@ -41,7 +41,6 @@
 #+nil(def sql/document select ()
   ((columns :type sequence :body #t)
    (tables :type sequence :body #t)))
-
 
 ;;;;;;
 ;;; Types of SQL Statements

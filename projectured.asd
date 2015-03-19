@@ -71,7 +71,7 @@
                                            (:file "state-machine")
                                            (:file "string")
                                            (:file "sql-api")
-                                           (:file "sql")
+                                           (:file "sql" :depends-on ("sql-api"))
                                            (:file "table")
                                            (:file "test")
                                            (:file "text")

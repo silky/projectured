@@ -28,13 +28,13 @@
 
 ;;; Generic slots behavior resolver for document, make-function, macro definitions
 (def function preprocess-sql/document-slots (slots)
-  (assert (>= 1 (count-if (lambda (slot) (getf (rest slot) :body)) slots)))
+  (assert (>= 1 (count-if (lambda (slot) (getf (rest slot) :sql-body)) slots)))
   (iter (for slot in slots)
-        (with macro-sql-body-slot = (awhen (first (find-if (lambda (slot) (getf (rest slot) :body)) slots))
-                                           (list :body it)))
+        (with macro-sql-body-slot = (awhen (first (find-if (lambda (slot) (getf (rest slot) :sql-body)) slots))
+                                      (list '&body it)))
         (for slot-name = (first slot))
         (for type = (getf (rest slot) :type))
-        (for body = (getf (rest slot) :body))
+        (for sql-body = (getf (rest slot) :sql-body))
         ;; document-definition-slots - ((a) (b))
         ;; - ensure type default sql/base
         ;; TODO remove special keywords
@@ -50,17 +50,29 @@
         (appending (list (make-keyword slot-name)
                          (if (eq type 'sequence)
                              (list 'll (append '(ensure-list) (list slot-name)))
+                             #+nil(list 'll slot-name)
                              slot-name))
                    into make-document-instance-parameter-slots)
         ;; macro-document-definition-slots
-        (unless body
+        (unless sql-body
           (collect slot-name
              into macro-document-definition-slots))
+        ;; macro-make-document-function-call-slots
+        (collect
+            (cond
+              #+nil((eq type 'sequence)
+               (list 'list-ll slot-name))
+              ((and (not (eq type 'sequence))
+                    sql-body)
+               (list 'first slot-name))
+              (t slot-name))
+            into macro-make-document-function-call-slots)
         (finally (return (values document-definition-slots
                                  make-document-function-definition-slots
                                  make-document-instance-parameter-slots
                                  macro-document-definition-slots
-                                 macro-sql-body-slot)))))
+                                 macro-sql-body-slot
+                                 macro-make-document-function-call-slots)))))
 
 (def definer sql/document (name supers slots &rest options)
   (bind ((supers (if (or (eq name 'sql/base) (member 'sql/base supers))
@@ -74,7 +86,8 @@
                    make-document-function-definition-slots
                    make-document-instance-parameter-slots
                    macro-document-definition-slots
-                   macro-sql-body-slot)
+                   macro-sql-body-slot
+                   macro-make-document-function-call-slots)
           (preprocess-sql/document-slots slots)))
     (declare (ignorable macro-sql-body-slot-name))
     `(progn
@@ -82,7 +95,7 @@
        (def function ,make-document-function-name (,@make-document-function-definition-slots &key selection)
          (make-instance ',document-name ,@make-document-instance-parameter-slots :selection selection))
        (def macro ,macro-document-name ((&key selection) ,@macro-document-definition-slots ,@macro-sql-body-slot)
-               `(,',make-document-function-name ,,@make-document-function-definition-slots :selection ,selection)))))
+               `(,',make-document-function-name ,,@macro-make-document-function-call-slots :selection ,selection)))))
 
 (def function preprocess-projection-template-iomap-slots (input-document-name iomap-options)
   (iter (for slot-name in (rest iomap-options))
