@@ -776,14 +776,48 @@
 ;;;;;
 ;;; SQL
 
-(def function make-test-document/sql ()
-  (sql/select ()
-    (list (sql/column-reference ()
-            (sql/column () "name" "varchar"))
-          (sql/column-reference ()
-            (sql/column () "age" "integer")))
-    (list (sql/table-reference ()
-            (sql/table () "person")))))
+(def (function e) make-test-document/sql ()
+  (sql/select-statement
+      ()
+      :subquery
+      (sql/subquery
+          ()
+          :query-block
+          (sql/query-block
+              ()
+              :select-clause
+              (sql/select-clause
+                  ()
+                  :column-references
+                  (list (sql/column-reference () :expression "egyik")
+                        (sql/column-reference () :expression "masik")))
+              :from-clause
+              (sql/from-clause
+                  ()
+                  :table-references
+                  (list (sql/table-reference () :expression "adat")))))))
+
+(def (function e) make-test-document/sql1 ()
+  (sql/select-clause
+      ()
+      :column-references
+      (list (sql/column-reference () :expression "egyik")
+            (sql/column-reference () :expression "masik"))))
+
+(def (function e) make-test-document/sql2 ()
+  (sql/query-block
+      ()
+      :select-clause
+      (sql/select-clause
+          ()
+          :column-references
+          (list (sql/column-reference () :expression "egyik")
+                (sql/column-reference () :expression "masik")))
+      :from-clause
+      (sql/from-clause
+          ()
+          :table-references
+          (list (sql/table-reference () :expression "adat")))))
 
 ;;; Levy example
 

@@ -1027,7 +1027,31 @@
 
 (def function make-test-projection/sql->graphics ()
   (sequential
-    (make-test-projection/sql->tree)
+    (recursive
+      (type-dispatching
+        (sql/base (sql->tree))
+        (document/base (document->t 'test-factory))))
+    (recursive
+      (type-dispatching
+        (tree/base (tree->text))
+        (sql/base (sql->text))
+        (text/text (preserving))))
+    (make-test-projection/text->output)))
+
+(def function make-test-projection/sql?->tree ()
+  (recursive
+    (type-dispatching
+      (sql/base (sql?->tree))
+      (document/base (document->t 'test-factory)))))
+
+(def function make-test-projection/sql?->text ()
+  (sequential
+    (make-test-projection/sql?->tree)
+    (make-test-projection/tree->text)))
+
+(def function make-test-projection/sql?->graphics ()
+  (sequential
+    (make-test-projection/sql?->tree)
     (make-test-projection/tree->text)
     ;;(line-numbering)
     ;;(word-wrapping 100)

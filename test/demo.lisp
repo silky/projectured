@@ -137,7 +137,11 @@
 
 (def demo evaluator (make-test-document/evaluator) (make-test-projection/evaluator))
 
-(def demo sql (make-test-document/sql) (make-test-projection/sql->graphics))
+(def demo sql? (make-test-document/sql1) (make-test-projection/sql?->graphics))
+
+(def demo sql1 (make-test-document/sql1) (make-test-projection/sql->graphics))
+
+(def demo sql2 (make-test-document/sql2) (make-test-projection/sql->graphics))
 
 (def demo sqlx (make-test-document/sqlx) (make-test-projection/sqlx->graphics))
 

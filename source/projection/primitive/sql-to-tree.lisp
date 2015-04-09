@@ -7,94 +7,116 @@
 (in-package :projectured)
 
 ;;;;;;
-;;; Template projection
+;;; SQL->TREE->TEXT
 
+;;;;;;
+;;; Primitive projection
 
+(def sql/projection sql/query-block ()
+  (tree/node (:separator (text/text () (text/string " ")))
+    (printer-output (select-clause-of self) recursion)
+    (printer-output (from-clause-of self) recursion)))
 
-(def projection-template sql/column-reference tree/leaf
-  #+nil(:projection (tree/leaf (:selection output-selection)
-                 (text/make-default-text (name-of (target-of input)) "enter column name" :font-color *color/solarized/content/darker* :selection (as (nthcdr 1 (va output-selection))))))
-  #+nil(:printer :default))
+(def sql/projection sql/select-clause ()
+  (tree/node (:separator (text/text () (text/string " ")))
+    (tree/leaf ()
+      (sql/keyword () :keyword "SELECT"))
+    (make-tree/node (as (mapcar 'output-of (va column-references-iomap)))
+                    :separator (text/text () (text/string ", " :font-color *color/solarized/gray*))
+                    :selection (as (nthcdr 2 (va output-selection))))))
 
-(def projection-template sql/table-reference tree/leaf
-  #+nil(:projection (tree/leaf (:selection output-selection)
-                 (text/make-default-text (name-of (target-of input)) "enter table name" :font-color *color/solarized/content/darker* :selection (as (nthcdr 1 (va output-selection))))))
-  #+nil(:printer :default))
+(def sql/projection sql/from-clause ()
+  (tree/node (:separator (text/text () (text/string " ")))
+    (tree/leaf ()
+      (sql/keyword () :keyword "FROM"))
+    (make-tree/node (as (mapcar 'output-of (va table-references-iomap)))
+                    :separator (text/text () (text/string ", " :font-color *color/solarized/gray*))
+                    :selection (as (nthcdr 2 (va output-selection))))))
 
-(def projection-template sql/select tree/node
-  (:iomap columns tables)
-  #+nil(:projection (tree/node (:selection output-selection :separator (text/text () (text/string " ")))
-                 (tree/leaf (:selection (as (nthcdr 2 (va output-selection))))
-                   (text/text (:selection (as (nthcdr 3 (va output-selection))))
-                     (text/string "SELECT" :font-color *color/solarized/blue*)))
-                 (make-tree/node (as (mapcar 'output-of (va columns-iomap)))
-                                 :separator (text/text () (text/string ", " :font-color *color/solarized/gray*))
-                                 :selection (as (nthcdr 2 (va output-selection))))
-                 (tree/leaf (:selection (as (nthcdr 2 (va output-selection))))
-                   (text/text (:selection (as (nthcdr 3 (va output-selection))))
-                     (text/string "FROM" :font-color *color/solarized/blue*)))
-                 (make-tree/node (as (mapcar 'output-of (va tables-iomap)))
-                                 :separator (text/text () (text/string ", " :font-color *color/solarized/gray*))
-                                 :selection (as (nthcdr 2 (va output-selection))))))
-  #+nil(:printer :default))
+(def sql/projection sql/column-reference ()
+  (tree/leaf ()
+    self)
+  (text/text ()
+    (text/string (expression-of self))))
 
+(def sql/projection sql/table-reference ()
+  (tree/leaf ()
+    self)
+  (text/text ()
+    (text/string (expression-of self))))
 
+(def sql/projection sql/keyword ()
+  (text/text ()
+    (text/string (keyword-of self))))
 
+;;;;;;
+;;; Compound projection
+
+;; TODO collect primitive sql projection and make compounds
+
+(def function make-projection/sql->tree ()
+  (type-dispatching
+    (sql/query-block (make-projection/sql/query-block->tree/node))
+    (sql/select-clause (make-projection/sql/select-clause->tree/node))
+    (sql/column-reference (make-projection/sql/column-reference->tree/leaf))
+    (sql/from-clause (make-projection/sql/from-clause->tree/node))
+    (sql/table-reference (make-projection/sql/table-reference->tree/leaf))))
+
+(def macro sql->tree ()
+  '(make-projection/sql->tree))
+
+(def function make-projection/sql->text ()
+  (type-dispatching
+    (sql/keyword (make-projection/sql/keyword->text/text))
+    (sql/column-reference (make-projection/sql/column-reference->text/text))
+    (sql/table-reference (make-projection/sql/table-reference->text/text))))
+
+(def macro sql->text ()
+  '(make-projection/sql->text))
 
 ;;;;;;
 ;;; Projection
 
-#+nil(def projection sql/column-reference->tree/leaf ()
+(def projection sql?/column-reference->tree/leaf ()
   ())
 
-#+nil(def projection sql/table-reference->tree/leaf ()
-  ())
-
-#+nil(def projection sql/select->tree/node ()
+(def projection sql?/select-clause->tree/node ()
   ())
 
 ;;;;;;
 ;;; IO map
 
-#+nil(def iomap iomap/sql/select->tree/node ()
-  ((columns-iomap :type sequence)
-   (tables-iomap :type sequence)))
+(def iomap iomap/sql?/select-clause->tree/node ()
+  ((column-references-iomap :type sequence)))
 
 ;;;;;;
 ;;; Construction
 
-#+nil(def function make-projection/sql/column-reference->tree/leaf ()
-  (make-projection 'sql/column-reference->tree/leaf))
+(def function make-projection/sql?/column-reference->tree/leaf ()
+  (make-projection 'sql?/column-reference->tree/leaf))
 
-#+nil(def function make-projection/sql/table-reference->tree/leaf ()
-  (make-projection 'sql/table-reference->tree/leaf))
-
-#+nil(def function make-projection/sql/select->tree/node ()
-  (make-projection 'sql/select->tree/node))
+(def function make-projection/sql?/select-clause->tree/node ()
+  (make-projection 'sql?/select-clause->tree/node))
 
 ;;;;;;
 ;;; Construction
 
-#+nil(def macro sql/column-reference->tree/leaf ()
-  '(make-projection/sql/column-reference->tree/leaf))
+(def macro sql?/column-reference->tree/leaf ()
+  '(make-projection/sql?/column-reference->tree/leaf))
 
-#+nil(def macro sql/table-reference->tree/leaf ()
-  '(make-projection/sql/table-reference->tree/leaf))
-
-#+nil(def macro sql/select->tree/node ()
-  '(make-projection/sql/select->tree/node))
+(def macro sql?/select->tree/node ()
+  '(make-projection/sql?/select-clause->tree/node))
 
 ;;;;;;
 ;;; Forward mapper
 
-(def function forward-mapper/sql/column-reference->tree/leaf (printer-iomap reference)
+(def function forward-mapper/sql?/column-reference->tree/leaf (printer-iomap reference)
   (bind ((projection (projection-of printer-iomap))
          (recursion (recursion-of printer-iomap)))
     (pattern-case reference
       (((the sql/column-reference document))
        '((the tree/leaf document)))
-      (((the sql/column (target-of (the sql/column-reference document)))
-        (the string (name-of (the sql/column document)))
+      (((the string (expression-of (the sql/column-reference document)))
         (the string (subseq (the string document) ?start-index ?end-index)))
        `((the text/text (content-of (the tree/leaf document)))
          (the text/text (text/subseq (the text/text document) ,?start-index ,?end-index))))
@@ -102,31 +124,16 @@
        (when (and (eq projection ?projection) (eq recursion ?recursion))
          ?rest)))))
 
-(def function forward-mapper/sql/table-reference->tree/leaf (printer-iomap reference)
+(def function forward-mapper/sql?/select-clause->tree/node (printer-iomap reference)
   (bind ((projection (projection-of printer-iomap))
          (recursion (recursion-of printer-iomap)))
     (pattern-case reference
-      (((the sql/table-reference document))
-       '((the tree/leaf document)))
-      (((the sql/table (target-of (the sql/table-reference document)))
-        (the string (name-of (the sql/table document)))
-        (the string (subseq (the string document) ?start-index ?end-index)))
-       `((the text/text (content-of (the tree/leaf document)))
-         (the text/text (text/subseq (the text/text document) ,?start-index ,?end-index))))
-      (((the tree/leaf (printer-output (the sql/table-reference document) ?projection ?recursion)) . ?rest)
-       (when (and (eq projection ?projection) (eq recursion ?recursion))
-         ?rest)))))
-
-(def function forward-mapper/sql/select->tree/node (printer-iomap reference)
-  (bind ((projection (projection-of printer-iomap))
-         (recursion (recursion-of printer-iomap)))
-    (pattern-case reference
-      (((the sql/select document))
+      (((the sql/select-clause document))
        '((the tree/node document)))
-      (((the sequence (columns-of (the sql/select document)))
+      (((the sequence (column-references-of (the sql/select-clause document)))
         (the ?type (elt (the sequence document) ?index))
         . ?rest)
-       (bind ((column-iomap (elt (columns-iomap-of printer-iomap) ?index))
+       (bind ((column-iomap (elt (column-references-iomap-of printer-iomap) ?index))
               (column-output (output-of column-iomap)))
          (values `((the sequence (children-of (the tree/node document)))
                    (the tree/node (elt (the sequence document) 1))
@@ -134,25 +141,14 @@
                    (the ,(form-type column-output) (elt (the sequence document) ,?index)))
                  ?rest
                  column-iomap)))
-      (((the sequence (tables-of (the sql/select document)))
-        (the ?type (elt (the sequence document) ?index))
-        . ?rest)
-       (bind ((table-iomap (elt (tables-iomap-of printer-iomap) ?index))
-              (table-output (output-of table-iomap)))
-         (values `((the sequence (children-of (the tree/node document)))
-                   (the tree/node (elt (the sequence document) 3))
-                   (the sequence (children-of (the tree/node document)))
-                   (the ,(form-type table-output) (elt (the sequence document) ,?index)))
-                 ?rest
-                 table-iomap)))
-      (((the tree/node (printer-output (the sql/select document) ?projection ?recursion)) . ?rest)
+      (((the tree/node (printer-output (the sql/select-clause document) ?projection ?recursion)) . ?rest)
        (when (and (eq projection ?projection) (eq recursion ?recursion))
          ?rest)))))
 
 ;;;;;;
 ;;; Backward mapper
 
-(def function backward-mapper/sql/column-reference->tree/leaf (printer-iomap reference)
+(def function backward-mapper/sql?/column-reference->tree/leaf (printer-iomap reference)
   (bind ((projection (projection-of printer-iomap))
          (recursion (recursion-of printer-iomap))
          (printer-input (input-of printer-iomap)))
@@ -161,124 +157,76 @@
        '((the sql/column-reference document)))
       (((the text/text (content-of (the tree/leaf document)))
         (the text/text (text/subseq (the text/text document) ?start-index ?end-index)))
-       (if (string= (name-of (target-of printer-input)) "")
+       (if (string= (expression-of printer-input) "")
            (append `((the tree/leaf (printer-output (the sql/column-reference document) ,projection ,recursion))) reference)
-           `((the sql/column (target-of (the sql/column-reference document)))
-             (the string (name-of (the sql/column document)))
+           `((the string (expression-of (the sql/column-reference document)))
              (the string (subseq (the string document) ,?start-index ,?end-index)))))
       (?a
        (append `((the tree/leaf (printer-output (the sql/column-reference document) ,projection ,recursion))) reference)))))
 
-(def function backward-mapper/sql/table-reference->tree/leaf (printer-iomap reference)
-  (bind ((projection (projection-of printer-iomap))
-         (recursion (recursion-of printer-iomap))
-         (printer-input (input-of printer-iomap)))
-    (pattern-case reference
-      (((the tree/leaf document))
-       '((the sql/table-reference document)))
-      (((the text/text (content-of (the tree/leaf document)))
-        (the text/text (text/subseq (the text/text document) ?start-index ?end-index)))
-       (if (string= (name-of (target-of printer-input)) "")
-           (append `((the tree/leaf (printer-output (the sql/table-reference document) ,projection ,recursion))) reference)
-           `((the sql/table (target-of (the sql/table-reference document)))
-             (the string (name-of (the sql/table document)))
-             (the string (subseq (the string document) ,?start-index ,?end-index)))))
-      (?a
-       (append `((the tree/leaf (printer-output (the sql/table-reference document) ,projection ,recursion))) reference)))))
-
-(def function backward-mapper/sql/select->tree/node (printer-iomap reference)
+(def function backward-mapper/sql?/select-clause->tree/node (printer-iomap reference)
   (bind ((projection (projection-of printer-iomap))
          (recursion (recursion-of printer-iomap)))
     (pattern-case reference
       (((the tree/node document))
-       '((the sql/select document)))
+       '((the sql/select-clause document)))
       (((the sequence (children-of (the tree/node document)))
         (the tree/node (elt (the sequence document) 1))
         (the sequence (children-of (the tree/node document)))
         (the tree/leaf (elt (the sequence document) ?index))
         . ?rest)
-       (bind ((column-iomap (elt (columns-iomap-of printer-iomap) ?index))
+       (bind ((column-iomap (elt (column-references-iomap-of printer-iomap) ?index))
               (column-input (input-of column-iomap)))
-         (values `((the sequence (columns-of (the sql/select document)))
+         (values `((the sequence (column-references-of (the sql/select-clause document)))
                    (the ,(form-type column-input) (elt (the sequence document) ,?index)))
                  ?rest
                  column-iomap)))
-      (((the sequence (children-of (the tree/node document)))
-        (the tree/node (elt (the sequence document) 3))
-        (the sequence (children-of (the tree/node document)))
-        (the tree/leaf (elt (the sequence document) ?index))
-        . ?rest)
-       (bind ((table-iomap (elt (tables-iomap-of printer-iomap) ?index))
-              (table-input (input-of table-iomap)))
-         (values `((the sequence (tables-of (the sql/select document)))
-                   (the ,(form-type table-input) (elt (the sequence document) ,?index)))
-                 ?rest
-                 table-iomap)))
       (?a
-       (append `((the tree/node (printer-output (the sql/select document) ,projection ,recursion))) reference)))))
+       (append `((the tree/node (printer-output (the sql/select-clause document) ,projection ,recursion))) reference)))))
 
 ;;;;;;
 ;;; Printer
 
-(def printer sql/column-reference->tree/leaf (projection recursion input input-reference)
+(def printer sql?/column-reference->tree/leaf (projection recursion input input-reference)
   (bind ((output-selection (as (print-selection (make-iomap/object projection recursion input input-reference nil)
                                                 (selection-of input)
-                                                'forward-mapper/sql/column-reference->tree/leaf)))
+                                                'forward-mapper/sql?/column-reference->tree/leaf)))
          (output (as (tree/leaf (:selection output-selection)
-                       (text/make-default-text (name-of (target-of input)) "enter column name" :font-color *color/solarized/content/darker* :selection (as (nthcdr 1 (va output-selection))))))))
+                       (text/make-default-text (expression-of input) "enter column name" :font-color *color/solarized/content/darker* :selection (as (nthcdr 1 (va output-selection))))))))
     (make-iomap/object projection recursion input input-reference output)))
 
-(def printer sql/table-reference->tree/leaf (projection recursion input input-reference)
-  (bind ((output-selection (as (print-selection (make-iomap/object projection recursion input input-reference nil)
-                                                (selection-of input)
-                                                'forward-mapper/sql/table-reference->tree/leaf)))
-         (output (as (tree/leaf (:selection output-selection)
-                       (text/make-default-text (name-of (target-of input)) "enter table name" :font-color *color/solarized/content/darker* :selection (as (nthcdr 1 (va output-selection))))))))
-    (make-iomap/object projection recursion input input-reference output)))
-
-(def printer sql/select->tree/node (projection recursion input input-reference)
-  (bind ((columns-iomap (as (iter (for column-index :from 0)
-                                  (for column :in-sequence (columns-of input))
+(def printer sql?/select-clause->tree/node (projection recursion input input-reference)
+  (bind ((column-references-iomap (as (iter (for column-index :from 0)
+                                  (for column :in-sequence (column-references-of input))
                                   (collect (recurse-printer recursion column
                                                             `((elt (the sequence document) ,column-index)
-                                                              (the sequence (columns-of (the sql/select document)))
+                                                              (the sequence (column-references-of (the sql/select-clause document)))
                                                               ,@(typed-reference (form-type input) input-reference)))))))
-         (tables-iomap (as (iter (for table-index :from 0)
-                                 (for table :in-sequence (tables-of input))
-                                 (collect (recurse-printer recursion table
-                                                           `((elt (the sequence document) ,table-index)
-                                                             (the sequence (tables-of (the sql/select document)))
-                                                             ,@(typed-reference (form-type input) input-reference)))))))
-         (output-selection (as (print-selection (make-iomap 'iomap/sql/select->tree/node
+         (output-selection (as (print-selection (make-iomap 'iomap/sql?/select-clause->tree/node
                                                             :projection projection :recursion recursion
                                                             :input input :input-reference input-reference
-                                                            :columns-iomap columns-iomap
-                                                            :tables-iomap tables-iomap)
+                                                            :column-references-iomap column-references-iomap)
                                                 (selection-of input)
-                                                'forward-mapper/sql/select->tree/node)))
+                                                'forward-mapper/sql?/select-clause->tree/node)))
          (output (as (tree/node (:selection output-selection :separator (text/text () (text/string " ")))
                        (tree/leaf (:selection (as (nthcdr 2 (va output-selection))))
                          (text/text (:selection (as (nthcdr 3 (va output-selection))))
                            (text/string "SELECT" :font-color *color/solarized/blue*)))
-                       (make-tree/node (as (mapcar 'output-of (va columns-iomap)))
+                       (make-tree/node (as (mapcar 'output-of (va column-references-iomap)))
                                        :separator (text/text () (text/string ", " :font-color *color/solarized/gray*))
                                        :selection (as (nthcdr 2 (va output-selection))))
                        (tree/leaf (:selection (as (nthcdr 2 (va output-selection))))
                          (text/text (:selection (as (nthcdr 3 (va output-selection))))
-                           (text/string "FROM" :font-color *color/solarized/blue*)))
-                       (make-tree/node (as (mapcar 'output-of (va tables-iomap)))
-                                       :separator (text/text () (text/string ", " :font-color *color/solarized/gray*))
-                                       :selection (as (nthcdr 2 (va output-selection))))))))
-    (make-iomap 'iomap/sql/select->tree/node
+                           (text/string "FROM" :font-color *color/solarized/blue*)))))))
+    (make-iomap 'iomap/sql?/select-clause->tree/node
                 :projection projection :recursion recursion
                 :input input :input-reference input-reference :output output
-                :columns-iomap columns-iomap
-                :tables-iomap tables-iomap)))
+                :column-references-iomap column-references-iomap)))
 
 ;;;;;;
 ;;; Reader
 
-(def reader sql/column-reference->tree/leaf (projection recursion input printer-iomap)
+(def reader sql?/column-reference->tree/leaf (projection recursion input printer-iomap)
   (declare (ignore projection))
   (bind ((printer-input (input-of printer-iomap))
          (operation-mapper (lambda (operation selection child-selection child-iomap)
@@ -286,54 +234,30 @@
                              (typecase operation
                                (operation/text/replace-range
                                 (pattern-case selection
-                                  (((the sql/column (target-of (the sql/column-reference document)))
-                                    (the string (name-of (the sql/column document)))
+                                  (((the string (expression-of (the sql/column-reference document)))
                                     (the string (subseq (the string document) ?start-index ?end-index)))
                                    (make-operation/sequence/replace-range printer-input selection (replacement-of operation)))
                                   (((the tree/leaf (printer-output (the sql/column-reference document) ?projection ?recursion)) . ?rest)
                                    (make-operation/sequence/replace-range printer-input
-                                                                          '((the sql/column (target-of (the sql/column-reference document)))
-                                                                            (the string (name-of (the sql/column document)))
+                                                                          '((the string (expression-of (the sql/column-reference document)))
                                                                             (the string (subseq (the string document) 0 0)))
                                                                           (replacement-of operation)))))))))
-    (merge-commands (command/read-backward recursion input printer-iomap 'backward-mapper/sql/column-reference->tree/leaf operation-mapper)
+    (merge-commands (command/read-backward recursion input printer-iomap 'backward-mapper/sql?/column-reference->tree/leaf operation-mapper)
                     (make-command/nothing (gesture-of input)))))
 
-(def reader sql/table-reference->tree/leaf (projection recursion input printer-iomap)
-  (declare (ignore projection))
-  (bind ((printer-input (input-of printer-iomap))
-         (operation-mapper (lambda (operation selection child-selection child-iomap)
-                             (declare (ignore child-selection child-iomap))
-                             (typecase operation
-                               (operation/text/replace-range
-                                (pattern-case selection
-                                  (((the sql/table (target-of (the sql/table-reference document)))
-                                    (the string (name-of (the sql/table document)))
-                                    (the string (subseq (the string document) ?start-index ?end-index)))
-                                   (make-operation/sequence/replace-range printer-input selection (replacement-of operation)))
-                                  (((the tree/leaf (printer-output (the sql/table-reference document) ?projection ?recursion)) . ?rest)
-                                   (make-operation/sequence/replace-range printer-input
-                                                                          '((the sql/table (target-of (the sql/table-reference document)))
-                                                                            (the string (name-of (the sql/table document)))
-                                                                            (the string (subseq (the string document) 0 0)))
-                                                                          (replacement-of operation)))))))))
-    (merge-commands (command/read-backward recursion input printer-iomap 'backward-mapper/sql/table-reference->tree/leaf operation-mapper)
-                    (make-command/nothing (gesture-of input)))))
-
-(def reader sql/select->tree/node (projection recursion input printer-iomap)
+(def reader sql?/select-clause->tree/node (projection recursion input printer-iomap)
   (declare (ignore projection))
   (bind ((printer-input (input-of printer-iomap)))
-    (merge-commands (command/read-selection recursion input printer-iomap 'forward-mapper/sql/select->tree/node 'backward-mapper/sql/select->tree/node)
+    (merge-commands (command/read-selection recursion input printer-iomap 'forward-mapper/sql?/select-clause->tree/node 'backward-mapper/sql?/select-clause->tree/node)
                     (gesture-case (gesture-of input)
                       ((gesture/keyboard/key-press #\,)
                        :domain "SQL" :description "Inserts a new column into the columns of the SQL select"
-                       :operation (bind ((index (length (columns-of printer-input))))
+                       :operation (bind ((index (length (column-references-of printer-input))))
                                     (make-operation/sequence/replace-range printer-input
-                                                                           `((the sequence (columns-of (the sql/select document)))
+                                                                           `((the sequence (column-references-of (the sql/select-clause document)))
                                                                              (the sequence (subseq (the sequence document) ,index ,index)))
-                                                                           (list (sql/column-reference (:selection '((the sql/column (target-of (the sql/column-reference document)))
-                                                                                                                     (the string (name-of (the sql/column document)))
+                                                                           (list (sql/column-reference (:selection '((the string (expression-of (the sql/column-reference document)))
                                                                                                                      (the string (subseq (the string document) 0 0))))
-                                                                                   (sql/column () "" "")))))))
-                    (command/read-backward recursion input printer-iomap 'backward-mapper/sql/select->tree/node nil)
+                                                                                                       :expression ""))))))
+                    (command/read-backward recursion input printer-iomap 'backward-mapper/sql?/select-clause->tree/node nil)
                     (make-command/nothing (gesture-of input)))))

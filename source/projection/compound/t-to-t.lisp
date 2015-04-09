@@ -326,15 +326,13 @@
 ;;;;;;
 ;;; SQL
 
-
-(def function make-projection/sql->tree ()
+(def function make-projection/sql?->tree ()
   (type-dispatching
-    (sql/column-reference (make-projection/sql/column-reference->tree/leaf))
-    (sql/table-reference (make-projection/sql/table-reference->tree/leaf))
-    (sql/select (make-projection/sql/select->tree/node))))
+    (sql/column-reference (make-projection/sql?/column-reference->tree/leaf))
+    (sql/select-clause (make-projection/sql?/select-clause->tree/node))))
 
-(def macro sql->tree ()
-  '(make-projection/sql->tree))
+(def macro sql?->tree ()
+  '(make-projection/sql?->tree))
 
 ;;;;;;
 ;;; Levy example

@@ -6,8 +6,13 @@
 
 (in-package :projectured)
 
+(def logger sql-projection ())
+
+(def document sql/base ()
+  ())
+
 (def macro nth-selection (selection index)
-  (if (= index 0)
+  (if (<= index 1)
       selection
       `(as (nthcdr ,index (va ,selection)))))
 
@@ -26,15 +31,10 @@
 (def macro 5th-selection (selection)
   `(as (nthcdr 5 (va ,selection))))
 
-;;; Generic slots behavior resolver for document, make-function, macro definitions
-(def function preprocess-sql/document-slots (slots)
-  (assert (>= 1 (count-if (lambda (slot) (getf (rest slot) :sql-body)) slots)))
+(def function preprocess-sql/statement-slots (slots)
   (iter (for slot in slots)
-        (with macro-sql-body-slot = (awhen (first (find-if (lambda (slot) (getf (rest slot) :sql-body)) slots))
-                                      (list '&body it)))
         (for slot-name = (first slot))
         (for type = (getf (rest slot) :type))
-        (for sql-body = (getf (rest slot) :sql-body))
         ;; document-definition-slots - ((a) (b))
         ;; - ensure type default sql/base
         ;; TODO remove special keywords
@@ -54,27 +54,19 @@
                              slot-name))
                    into make-document-instance-parameter-slots)
         ;; macro-document-definition-slots
-        (unless sql-body
-          (collect slot-name
-             into macro-document-definition-slots))
+        (collect slot-name
+          into macro-document-definition-slots)
         ;; macro-make-document-function-call-slots
-        (collect
-            (cond
-              #+nil((eq type 'sequence)
-               (list 'list-ll slot-name))
-              ((and (not (eq type 'sequence))
-                    sql-body)
-               (list 'first slot-name))
-              (t slot-name))
-            into macro-make-document-function-call-slots)
+        (appending (list (make-keyword slot-name)
+                         slot-name)
+                   into macro-make-document-function-call-slots)
         (finally (return (values document-definition-slots
                                  make-document-function-definition-slots
                                  make-document-instance-parameter-slots
                                  macro-document-definition-slots
-                                 macro-sql-body-slot
                                  macro-make-document-function-call-slots)))))
 
-(def definer sql/document (name supers slots &rest options)
+(def definer sql/statement (name supers slots &rest options)
   (bind ((supers (if (or (eq name 'sql/base) (member 'sql/base supers))
                      supers
                      (append supers '(sql/base))))
@@ -86,216 +78,85 @@
                    make-document-function-definition-slots
                    make-document-instance-parameter-slots
                    macro-document-definition-slots
-                   macro-sql-body-slot
                    macro-make-document-function-call-slots)
-          (preprocess-sql/document-slots slots)))
-    (declare (ignorable macro-sql-body-slot-name))
+          (preprocess-sql/statement-slots slots)))
     `(progn
        (def document ,document-name ,supers ,document-definition-slots ,@options)
-       (def function ,make-document-function-name (,@make-document-function-definition-slots &key selection)
+       (def function ,make-document-function-name (&key ,@make-document-function-definition-slots selection)
          (make-instance ',document-name ,@make-document-instance-parameter-slots :selection selection))
-       (def macro ,macro-document-name ((&key selection) ,@macro-document-definition-slots ,@macro-sql-body-slot)
-               `(,',make-document-function-name ,,@macro-make-document-function-call-slots :selection ,selection)))))
+       (def macro ,macro-document-name ((&key selection) &key ,@macro-document-definition-slots)
+         `(,',make-document-function-name ,,@macro-make-document-function-call-slots :selection ,selection)))))
 
-(def function preprocess-projection-template-iomap-slots (input-document-name iomap-options)
-  (iter (for slot-name in (rest iomap-options))
-        (assert (find-slot input-document-name slot-name))
-        (bind ((iomap-slot-name (format-symbol *package* "~A-IOMAP" slot-name)))
-          (collect (list iomap-slot-name :type 'sequence)
-            into iomap-slot-definitions)
-          (appending (list (make-keyword iomap-slot-name)
-                           iomap-slot-name)
-                     into make-iomap-parameter-slots)
-          (collect (list slot-name iomap-slot-name 'sequence)
-            into printer-iomap-definer))
+(def function preprocess-sql/projection-slots (input-document-name)
+  (sql-projection.debug "preprocess-sql/projection-slots - ~A" input-document-name)
+  (iter (for slot in (class-direct-slots (find-class input-document-name)))
+        (for slot-definition-type = (slot-definition-type slot))
+        (for slot-name = (slot-definition-name slot))
+        (sql-projection.debug "~A - ~A - ~A" slot slot-name slot-definition-type)
+        (when (eq slot-definition-type 'sequence)
+          (bind ((iomap-slot-name (format-symbol *package* "~A-IOMAP" slot-name)))
+            (collect (list iomap-slot-name :type 'sequence)
+              into iomap-slot-definitions)
+            (appending (list (make-keyword iomap-slot-name)
+                             iomap-slot-name)
+                       into make-iomap-parameter-slots)
+            (collect (list slot-name iomap-slot-name 'sequence)
+              into printer-iomap-definer)))
+        (when iomap-slot-definitions
+          (sql-projection.debug "~A" iomap-slot-definitions)
+          (sql-projection.debug "~A" make-iomap-parameter-slots)
+          (sql-projection.debug "~A" printer-iomap-definer))
         (finally (return (values iomap-slot-definitions
                                  make-iomap-parameter-slots
                                  printer-iomap-definer)))))
 
-(def definer projection-template (input-document-name output-document-name &rest options)
-  (bind ((projection-name (format-symbol *package* "~A->~A" input-document-name output-document-name))
-         ;; TODO assert for protected domains
-         (iomap-options (find-if (lambda (option) (eq :iomap (first option))) options))
-         (projection-options (find-if (lambda (option) (eq :projection (first option))) options))
-         (projection-contents (rest projection-options))
-         (printer-options (find-if (lambda (option) (eq :printer (first option))) options))
-         (iomap-name (format-symbol *package* "IOMAP/~A" projection-name))
-         (make-projection-function-name (format-symbol *package* "MAKE-PROJECTION/~A" projection-name))
-         (macro-projection-name projection-name)
-         ((:values iomap-slot-definitions
-                   make-iomap-parameter-slots
-                   printer-iomap-definer)
-          (preprocess-projection-template-iomap-slots input-document-name iomap-options)))
-    (declare (ignorable projection-options
-                        make-iomap-parameter-slots
-                        printer-iomap-definer))
-    `(progn
-       (def projection ,projection-name ()
-         ())
-       (def iomap ,iomap-name () ,iomap-slot-definitions)
-       #+nil,(when iomap-options
-              `(def iomap ,iomap-name () ,iomap-slot-definitions))
-       (def function ,make-projection-function-name ()
-         (make-projection ',projection-name))
-       (def macro ,macro-projection-name ()
-         `(,',make-projection-function-name))
-       ;; printer
-       ,(when (and printer-options projection-options)
-              (bind ((forward-mapper-function-name (format-symbol *package* "FORWARD-MAPPER/~A" projection-name)))
-                `(def printer ,projection-name (projection recursion input input-reference)
-                   (bind (#+nil(self input)
-                          ,@(iter (for iomap in printer-iomap-definer)
-                                  (for slot-name = (first iomap))
-                                  (for iomap-name = (second iomap))
-                                  (collect `(,iomap-name (as (iter (for index :from 0)
-                                                                   (for instance :in-sequence (slot-value input ',slot-name))
-                                                                   (collect (recurse-printer recursion instance
-                                                                                             `((elt (the sequence document) ,index)
-                                                                                               (the sequence (slot-value (the sql/select document) ,',slot-name))
-                                                                                               ,@(typed-reference (form-type input) input-reference)))))))))
-                          (output-selection (as (print-selection (make-iomap ',iomap-name
-                                                                             :projection projection
-                                                                             :recursion recursion
-                                                                             :input input
-                                                                             :input-reference input-reference
-                                                                             ;; :output TODO ?!
-                                                                             ,@make-iomap-parameter-slots)
-                                                                 (selection-of input)
-                                                                 ',forward-mapper-function-name)))
-                          (output
-                           (as ,(first (labels ((recurse (instance)
-                                                (etypecase instance
-                                                  ((or number string symbol pathname function sb-sys:system-area-pointer)
-                                                   instance)
-                                                  #+nil(document/sequence
-                                                           (make-document/sequence (iter (for element :in-sequence instance)
-                                                                                         (collect (recurse element)))
-                                                                                   :selection (recurse (selection-of instance))))
-                                                  (sequence
-                                                   (coerce (iter (for element :in-sequence instance)
-                                                                 (collect (recurse element)))
-                                                           (type-of instance)))
-                                                  #+nil(template-slot
-                                                        (output-of (recurse-printer recursion (slot-value input (name-of instance)) nil)))
-                                                  (standard-object
-                                                   (bind ((class (class-of instance))
-                                                          (copy (allocate-instance class))
-                                                          (slots (class-slots class)))
-                                                     (iter (for slot :in slots)
-                                                           (when (slot-boundp-using-class class instance slot)
-                                                             (setf (slot-value-using-class class copy slot) (recurse (slot-value-using-class class instance slot)))))
-                                                     copy)))))
-                                       (recurse projection-contents))))))
-                     ;; iomap confusion
-                     (make-iomap ',iomap-name
-                                 :projection projection
-                                 :recursion recursion
-                                 :input input
-                                 :input-reference input-reference
-                                 :output output ;; TODO ?!
-                                 ,@make-iomap-parameter-slots)))))
-       )))
-
-
-
-
-#|
-;;; uncomment for redefine the basic implementation
-
-#+nil(def projection-template sql/select tree/node
-  (:iomap columns tables)
-  (:projection (free/text "SELECT") (tree/node (:separator " ,") (columns-of self)))
-  (:printer :default))
-
-(def projection-template sql/select tree/node
-  (:iomap columns tables)
-  (:projection (tree/node (:selection output-selection :separator (text/text () (text/string " ")))
-                 (tree/leaf (:selection (as (nthcdr 2 (va output-selection))))
-                   (text/text (:selection (as (nthcdr 3 (va output-selection))))
-                     (text/string "SELECT" :font-color *color/solarized/blue*)))
-                 (make-tree/node (as (mapcar 'output-of (va columns-iomap)))
-                                 :separator (text/text () (text/string ", " :font-color *color/solarized/gray*))
-                                 :selection (as (nthcdr 2 (va output-selection))))
-                 (tree/leaf (:selection (as (nthcdr 2 (va output-selection))))
-                   (text/text (:selection (as (nthcdr 3 (va output-selection))))
-                     (text/string "FROM" :font-color *color/solarized/blue*)))
-                 (make-tree/node (as (mapcar 'output-of (va tables-iomap)))
-                                 :separator (text/text () (text/string ", " :font-color *color/solarized/gray*))
-                                 :selection (as (nthcdr 2 (va output-selection))))))
-  (:printer :default))
-
-#+nil(def projection-template sql/column-reference tree/leaf
-  (:projection (reference/text (name-of (target-of self))))
-  (:printer :default))
-
-(def projection-template sql/column-reference tree/leaf
-  (:projection (tree/leaf (:selection output-selection)
-                 (text/make-default-text (name-of (target-of input)) "enter column name" :font-color *color/solarized/content/darker* :selection (as (nthcdr 1 (va output-selection))))))
-  (:printer :default))
-
-;; 
-
-|#
-
-#+nil(def definer sql/statement (name supers slots &rest options)
-  (bind ((supers (if (or (eq name 'sql/base) (member 'sql/base supers))
-                     supers
-                     (append supers '(sql/base))))
-         ;; TODO options structure
-         
-         ;; names
-         (document-name (format-symbol *package* "SQL/~A" name))
-         (make-document-function-name (format-symbol *package* "MAKE-~A" document-name))
-         (macro-document-name document-name)
-         (tree-projection-name (format-symbol *package* "~A->TREE/~A" document-name tree-projection?))
-         (iomap-name (format-symbol *package* "IOMAP/~A" tree-projection-name))
-         (make-tree-projection-function-name (format-symbol *package* "MAKE-PROJECTION/~A" tree-projection-name))
-         (macro-tree-projection-name tree-projection-name)
-         
-         ;; KLUDGE multiple occurance?!
-         (macro-sql-body-slot-name
-          (first (find-if (lambda (slot) (getf (rest slot) :sql-body)) slots)))
-         ((:values document-definition-slots
-                   make-document-function-definition-slots
-                   make-document-instance-parameter-slots
-                   macro-document-definition-slots
-                   iomap-slot-definitions
-                   make-iomap-parameter-slots
-                   printer-iomap-definer)
-          (preprocess-sql/statement-slots slots)))
-    (declare (ignorable reader?
-                        tree-projection-reader-name
-                        forward-mapper-function-name
-                        backward-mapper-function-name))
-    `(progn
-       (def document ,document-name ,supers ,document-definition-slots ,@options)
-       (def function ,make-document-function-name (,@make-document-function-definition-slots &key selection)
-         (make-instance ',document-name ,@make-document-instance-parameter-slots :selection selection))
-       ,(if macro-sql-body-slot-name
-            `(def macro ,macro-document-name ((&key selection) ,@macro-document-definition-slots &body ,macro-sql-body-slot-name)
-               `(,',make-document-function-name ,,@make-document-function-definition-slots :selection ,selection))
-            `(def macro ,macro-document-name ((&key selection) ,@macro-document-definition-slots)
-               `(,',make-document-function-name ,,@make-document-function-definition-slots :selection ,selection)))
-       (def projection ,tree-projection-name ()
-         ())
-       (def iomap ,iomap-name () ,iomap-slot-definitions)
-       (def function ,make-tree-projection-function-name ()
-         (make-projection ',tree-projection-name))
-       (def macro ,macro-tree-projection-name ()
-         `(,',make-tree-projection-function-name))
-       ;; TODO default
-       ,(when printer?
-              `(def printer ,tree-projection-printer-name (projection recursion input input-reference)
-                 (bind ((self input)
-                        ,@(iter (for iomap in printer-iomap-definer)
+(def definer sql/projection (input-document-name (&rest options) &rest projections)
+  (sql-projection.debug "sql/projection - ~A - ~A" input-document-name options)
+  (iter (for projection :in projections)
+        (for output-document-name = (first projection)) ;; KLUDGE macroexpansion?
+        (sql-projection.debug "~A" projection)
+        (sql-projection.debug "~A" output-document-name)
+        (appending
+         (bind ((projection-name (format-symbol *package* "~A->~A" input-document-name output-document-name))
+                ;; TODO assert for protected domains
+                (iomap-name (format-symbol *package* "IOMAP/~A" projection-name))
+                (make-projection-function-name (format-symbol *package* "MAKE-PROJECTION/~A" projection-name))
+                (macro-projection-name projection-name)
+                (projection-contents projection) ;; currently are same
+                (forward-mapper-function-name (format-symbol *package* "FORWARD-MAPPER/~A" projection-name)) ;; should be simplified
+                (backward-mapper-function-name (format-symbol *package* "BACKWARD-MAPPER/~A" projection-name)) ;; should be simplified
+                ((:values iomap-slot-definitions
+                          make-iomap-parameter-slots
+                          printer-iomap-definer)
+                 (preprocess-sql/projection-slots input-document-name)))
+           (declare (ignorable make-iomap-parameter-slots
+                               printer-iomap-definer))
+           `((def projection ,projection-name ()
+               ())
+             (def iomap ,iomap-name () ,iomap-slot-definitions)
+             (def function ,make-projection-function-name ()
+               (make-projection ',projection-name))
+             (def macro ,macro-projection-name ()
+               `(,',make-projection-function-name))
+             (def function ,forward-mapper-function-name (printer-iomap reference)
+               (declare (ignorable printer-iomap reference))
+               (sql-projection.debug "FORWARD-MAPPER ~A" ',projection-name))
+             (def function ,backward-mapper-function-name (printer-iomap reference)
+               (declare (ignorable printer-iomap reference))
+               (sql-projection.debug "BACKWARD-MAPPER ~A" ',projection-name))
+             (def printer ,projection-name (projection recursion input input-reference)
+               (declare (ignorable projection recursion input input-reference))
+               (sql-projection.debug "PRINTER ~A" ',projection-name)
+               (bind ((self input))
+                 (declare (ignorable self))
+                 (bind (,@(iter (for iomap in printer-iomap-definer)
                                 (for slot-name = (first iomap))
                                 (for iomap-name = (second iomap))
-                                (for slot-type = (third iomap))
                                 (collect `(,iomap-name (as (iter (for index :from 0)
                                                                  (for instance :in-sequence (slot-value input ',slot-name))
                                                                  (collect (recurse-printer recursion instance
                                                                                            `((elt (the sequence document) ,index)
-                                                                                             (the sequence (slot-value (the sql/select document) ,',slot-name))
+                                                                                             (the sequence (slot-value (the ,',input-document-name document) ,',slot-name))
                                                                                              ,@(typed-reference (form-type input) input-reference)))))))))
                         (output-selection (as (print-selection (make-iomap ',iomap-name
                                                                            :projection projection
@@ -306,49 +167,60 @@
                                                                            ,@make-iomap-parameter-slots)
                                                                (selection-of input)
                                                                ',forward-mapper-function-name)))
-                        ,(when tree-projection?
-                               ;; TODO
-                               ;; keyword helyett lehetne valami frappánsabb is
-                               ;; node-leaf automatikus kezelése
-                               ;; selector szintjének automatikus kezelése
-                               ;; emaitt free-text van a select-re keyword-text helyett
-                               (bind ((top-tree-document (if (eq tree-projection-content-type :tree-leaf)
-                                                             'tree/leaf
-                                                             'tree/node)))
-                                 `(output (as (,top-tree-document
-                                               (:selection output-selection)
-                                               ,@(iter (for tree-projection-content in tree-projection-contents)
-                                                       (for content-type = (first tree-projection-content))
-                                                       (for content = (second tree-projection-content))
-                                                       (collect
-                                                           (ecase content-type
-                                                             (:default-text
-                                                              `(text/make-default-text ,content
-                                                                                       ,(format nil "<~A>" document-name)
-                                                                                       :font-color *color/solarized/content/darker*
-                                                                                       :selection (1st-selection output-selection)))
-                                                             (:keyword-text
-                                                              `(text/make-simple-text ,content
-                                                                                      :font-color *color/solarized/blue*
-                                                                                      :selection (1st-selection output-selection)))
-                                                             (:free-text
-                                                              `(tree/leaf (:selection (2nd-selection output-selection))
-                                                                 (text/text (:selection (3rd-selection output-selection))
-                                                                   (text/string ,content :font-color *color/solarized/blue*))))
-                                                             (:tree-node
-                                                              (bind ((slot-definition (find-if (lambda (slot) (eq content (first slot))) slots))
-                                                                     (slot-iomap-definition (find-if (lambda (slot) (eq content (first slot))) printer-iomap-definer))
-                                                                     (slot-type (getf (rest slot-definition) :type))
-                                                                     (iomap-name (second slot-iomap-definition)))
-                                                                (if (eq slot-type 'sequence)
-                                                                    `(make-tree/node (as (mapcar 'output-of (va ,iomap-name)))
-                                                                                     :separator (text/text () (text/string ", " :font-color *color/solarized/gray*))
-                                                                                     :selection (2nd-selection output-selection))
-                                                                    `(tree/leaf ()
-                                                                       (text/make-simple-text "TODO"
-                                                                                              :font-color *color/solarized/red*
-                                                                                              :selection (1st-selection output-selection)))))))))))))))
-                   (declare (ignorable self))
+                        (output
+                         (as ,(labels ((recurse (instance level)
+                                                (etypecase instance
+                                                  ((or symbol number string pathname function sb-sys:system-area-pointer)
+                                                   (progn
+                                                     (sql-projection.debug "KEEP-AS ~A" instance)
+                                                     instance))
+                                                  #+nil(document/sequence
+                                                           (make-document/sequence (iter (for element :in-sequence instance)
+                                                                                         (collect (recurse element)))
+                                                                                   :selection (recurse (selection-of instance))))
+                                                  (sequence
+                                                   (progn
+                                                     (sql-projection.debug "SEQUENCE ~A" instance)
+                                                     (coerce (iter (for element :in-sequence instance)
+                                                                   (for index :from 0)
+                                                                   (with is-document? =
+                                                                         (awhen (find-class (first instance) nil)
+                                                                           ;; TODO selection is exists in the class definition and handled by macro
+                                                                           ;; document is not work - for example text/string macro has no selection parameter
+                                                                           #+nil(subtypep it (find-class 'document))
+                                                                           (or (subtypep it (find-class 'tree/base))
+                                                                               (subtypep it (find-class 'text/text)))))
+                                                                   #+nil(with document-parameters =
+                                                                              (when is-document?
+                                                                                (second instance)))
+                                                                   #+nil(with document-parameters-selection =
+                                                                              (if (getf document-parameters :selection)
+                                                                                  document-parameters
+                                                                                  (append (list :selection 'output-selection) document-parameters )))
+                                                                   (collect (cond
+                                                                              ((and is-document?
+                                                                                    (= 1 index)
+                                                                                    (not (getf element :selection)))
+                                                                               (recurse (append (list :selection `(nth-selection output-selection ,level)) element) level))
+                                                                              ((and is-document?
+                                                                                    (< 1 index))
+                                                                               (recurse element (+ 1 level)))
+                                                                              (t (recurse element level)))))
+                                                             (type-of instance))))
+                                                  #+nil(template-slot
+                                                        (output-of (recurse-printer recursion (slot-value input (name-of instance)) nil)))
+                                                  (standard-object
+                                                   (progn
+                                                     (sql-projection.debug "OBJECT ~A" instance)
+                                                     (bind ((class (class-of instance))
+                                                            (copy (allocate-instance class))
+                                                            (slots (class-slots class)))
+                                                       (iter (for slot :in slots)
+                                                             (when (slot-boundp-using-class class instance slot)
+                                                               (setf (slot-value-using-class class copy slot) (recurse (slot-value-using-class class instance slot) level))))
+                                                       copy))))))
+                                      (sql-projection.debug "~A" projection-contents)
+                                      (recurse projection-contents 1)))))
                    ;; iomap confusion
                    (make-iomap ',iomap-name
                                :projection projection
@@ -356,4 +228,15 @@
                                :input input
                                :input-reference input-reference
                                :output output ;; TODO ?!
-                               ,@make-iomap-parameter-slots)))))))
+                               ,@make-iomap-parameter-slots))))
+             (def reader ,projection-name (projection recursion input printer-iomap)
+               (declare (ignorable projection recursion input printer-iomap))
+               #+nil(sql-projection.debug "READER ~A" ',projection-name)
+               (bind ((self input))
+                 (declare (ignorable self))
+                 (merge-commands (command/read-backward recursion input printer-iomap ',backward-mapper-function-name nil)
+                                 (make-command/nothing (gesture-of input)))))
+             ))
+         into result)
+        (finally (return (cons 'progn result)))))
+

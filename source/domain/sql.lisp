@@ -9,39 +9,6 @@
 ;;;;;;
 ;;; SQL domain
 
-;;; special slot behavior
-
-;;; :body #t - define in macro as &body
-(pushnew :sql-body hu.dwim.defclass-star:*allowed-slot-definition-properties*)
-
-(def document sql/base ()
-  ())
-
-(def document sql/text ()
-  ())
-
-(def sql/document column ()
-  ((name :type string)
-   (type :type string :accessor nil)))
-
-(def sql/document column-reference ()
-  ((target :type sql/column :sql-body t)))
-
-(def sql/document table ()
-  ((name :type string)
-   (columns :type sequence :sql-body #t)))
-
-(def sql/document table-reference ()
-  ((target :type sql/table :sql-body #t)))
-
-(def sql/document select ()
-  ((columns :type sequence)
-   (tables :type sequence)))
-
-#+nil(def sql/document select ()
-  ((columns :type sequence :body #t)
-   (tables :type sequence :body #t)))
-
 ;;;;;;
 ;;; Types of SQL Statements
 
@@ -50,45 +17,50 @@
 
 ;;;;;;
 ;;; SELECT statement
-#|
+
+(def sql/statement keyword ()
+  ((keyword :type string)))
+
+(def sql/statement column-reference ()
+  ((expression :type string)))
+
+(def sql/statement hint ()
+  ((hint :type string)))
+
+(def sql/statement select-clause ()
+  ((hint-clause)
+   (selection-mode :type sql/keyword)
+   (column-references :type sequence)))
+
+(def sql/statement table-reference ()
+  ((expression :type string)))
+
+(def sql/statement from-clause ()
+  ((table-references :type sequence)))
+
+(def sql/statement query-block ()
+  (;; TODO most of them not yet supported
+   (select-clause :type sql/select-clause)
+   (from-clause :type sql/from-clause)
+   (where-clause)
+   (hierarchical-query-clause)
+   (group-by-clause)
+   (having-clause)
+   (model-clause)
+   ))
+
+(def sql/statement subquery ()
+  ((set-operation)
+   (query-block :type sql/query-block)
+   (subqueries :type sequence)
+   ;; TODO ( subquery ) ?
+   (order-by-clause)))
+
 (def sql/statement select-statement ()
   ((subquery-factoring-clauses)
    (subquery)
    (for-update-clause)))
 
-(def sql/statement subquery ()
-  ((query-block)
-   ;; TODO multiple subquery and subquery operation
-   (subqueries)
-   ;; TODO ( subquery ) ?
-   (order-by-clause)
-   ))
-
-(def sql/statement query-block ()
-  ((hint)
-   (select-clause)
-   (from-clause)
-   (where-clause)
-   (hierarchical-query-clause)
-   (group-by-clause)
-   (having-clause)
-   (model-clause)))
-
-(def sql/statement subquery-factoring-clause ()
-  ((query-name)
-   (subquery)))
-
-
-(def sql/statement select-clause ()
-  ())
-
-(def function make-test-document/sql-statement ()
-  (sql/select-statement
-      ()
-      nil
-      nil
-      nil))
-|#
 ;;;;;;
 ;;; Levy example
 
